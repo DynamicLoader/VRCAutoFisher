@@ -17,7 +17,7 @@ namespace VRChatAutoFishing
         private void SetupHelpForm()
         {
             this.Text = "使用说明";
-            this.ClientSize = new Size(610, 950);
+            this.ClientSize = new Size(610, 1240);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -34,7 +34,7 @@ namespace VRChatAutoFishing
             Label authorLabel = new Label();
             authorLabel.Location = new Point(0, 20);
             authorLabel.Size = new Size(580, 30);
-            authorLabel.Text = "作者：arcxingye 欢迎加我玩哦~";
+            authorLabel.Text = "作者：arcxingye";
             authorLabel.Font = new Font("微软雅黑", 14, FontStyle.Bold);
             authorLabel.TextAlign = ContentAlignment.MiddleCenter;
             authorLabel.ForeColor = Color.DarkBlue;
@@ -51,7 +51,7 @@ namespace VRChatAutoFishing
             Label step4Label = new Label();
             step4Label.Location = new Point(25, currentY);
             step4Label.Size = new Size(550, 25);
-            step4Label.Text = "4.打开软件的开始按钮";
+            step4Label.Text = "4.点击本软件的开始按钮";
             step4Label.Font = new Font("微软雅黑", 11, FontStyle.Bold);
             step4Label.TextAlign = ContentAlignment.MiddleLeft;
             mainPanel.Controls.Add(step4Label);
@@ -68,6 +68,17 @@ namespace VRChatAutoFishing
             mainPanel.Controls.Add(step4DescLabel);
 
             currentY += 80;
+
+            // 第五步排查
+            Label step5DescLabel = new Label();
+            step5DescLabel.Location = new Point(25, currentY);
+            step5DescLabel.Size = new Size(550, 160);
+            step5DescLabel.Text = "如果还不行，尝试\n1.关闭杀毒软件以及系统防火墙\n2.确认你的VRCHAT的OSC端口是9000，不要修改端口\n3.不能多开VRCHAT客户端，只允许一个客户端存在\n4.确保其他软件不会占用9000端口，例如VRCFT、极个别加速器会占用\n5.右键以管理员身份运行\n6.世界发生错误时也会失效，详见天空是否出现错误提示";
+            step5DescLabel.Font = new Font("微软雅黑", 10, FontStyle.Regular);
+            step5DescLabel.TextAlign = ContentAlignment.TopLeft;
+            mainPanel.Controls.Add(step5DescLabel);
+
+            currentY += 140;
 
             // 美化关闭按钮
             Button closeButton = new Button();

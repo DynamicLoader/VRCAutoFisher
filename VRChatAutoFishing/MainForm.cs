@@ -316,7 +316,60 @@ namespace VRChatAutoFishing
                 _currentAction = "超时收杆";
                 _showingFishCount = false;
                 UpdateStatusText(_currentAction);
-                ForceReel();
+                PerformTimeoutReel();
+            }
+        }
+
+        // 新增：超时重钓机制 - 确保线收到位
+        private void PerformTimeoutReel()
+        {
+            if (_isProtected || _isClosing) return;
+
+            try
+            {
+                _isProtected = true;
+
+                // 第一步：抛竿2秒确保线收到位
+                _currentAction = "重钓抛竿";
+                UpdateStatusText(_currentAction);
+                SendClick(true);
+
+                DateTime castStart = DateTime.Now;
+                while (!_isClosing && (DateTime.Now - castStart).TotalSeconds < 2.0)
+                {
+                    if (_stopEvent.WaitOne(100))
+                    {
+                        SendClick(false);
+                        return;
+                    }
+                }
+                SendClick(false);
+
+                // 第二步：收杆20秒确保线完全收回
+                _currentAction = "重钓收杆";
+                UpdateStatusText(_currentAction);
+                SendClick(true);
+
+                DateTime reelStart = DateTime.Now;
+                while (!_isClosing && (DateTime.Now - reelStart).TotalSeconds < 20.0)
+                {
+                    if (_stopEvent.WaitOne(100))
+                    {
+                        SendClick(false);
+                        return;
+                    }
+                }
+                SendClick(false);
+
+                // 第三步：重新开始钓鱼流程
+                if (!_isClosing)
+                {
+                    PerformCast();
+                }
+            }
+            finally
+            {
+                _isProtected = false;
             }
         }
 
@@ -728,7 +781,7 @@ namespace VRChatAutoFishing
             MaximizeBox = false;
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "自动钓鱼v1.5.0";
+            Text = "自动钓鱼v1.5.1";
             FormClosing += MainForm_FormClosing;
             Load += MainForm_Load;
             ((System.ComponentModel.ISupportInitialize)trackBarCastTime).EndInit();
