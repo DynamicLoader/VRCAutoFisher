@@ -7,7 +7,7 @@
 
 演示：https://www.bilibili.com/video/BV1TqotYrEDe
 
-说明:软件里面有
+说明：软件里面有
 
 ## 关于 WebHook 通知
 
