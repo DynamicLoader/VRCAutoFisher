@@ -71,6 +71,7 @@ jobs:
       #     $dest = Join-Path $env:GITHUB_WORKSPACE ('release-' + "${{ matrix.name }}" + '.zip')
       #     Write-Host "Compressing executable $($exe.FullName) to $dest"
       #     Compress-Archive -Path $exe.FullName -DestinationPath $dest -Force
+      # 
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
