@@ -78,5 +78,13 @@ jobs:
         with:
           name: release-${{ matrix.name }}
           path: ${{ github.workspace }}/VRChatAutoFishing/publish
+      
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        # if: github.ref_type == 'tag'
+        with:
+          files: |
+            ${{ github.workspace }}/VRChatAutoFishing/publish/VRChatAutoFishing.exe
+            ${{ github.workspace }}/VRChatAutoFishing/publish/VRChatAutoFishingOneClick.exe
 
   # release job removed: workflow now only builds and uploads artifacts
