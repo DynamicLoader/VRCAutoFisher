@@ -73,15 +73,21 @@ jobs:
       #     Compress-Archive -Path $exe.FullName -DestinationPath $dest -Force
       # 
 
-      - name: Upload Build Artifact
+      - name: Upload Build Artifact - Non-Runtime
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.name }}
-          path: ${{ github.workspace }}/VRChatAutoFishing/publish
+          path: ${{ github.workspace }}/VRChatAutoFishing/publish/VRChatAutoFishing.exe
+
+      - name: Upload Build Artifact - With-Runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}-with-runtime
+          path: ${{ github.workspace }}/VRChatAutoFishing/publish/VRChatAutoFishingOneClick.exe
       
       - name: Release
         uses: softprops/action-gh-release@v2
-        # if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag'
         with:
           files: |
             ${{ github.workspace }}/VRChatAutoFishing/publish/VRChatAutoFishing.exe
