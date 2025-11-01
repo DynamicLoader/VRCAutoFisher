@@ -36,15 +36,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Resources\help_image1.png" />
-    <None Remove="Resources\help_image2.png" />
-    <None Remove="Resources\help_image3.png" />
+    <None Remove="Resources\help_image1.jpg" />
+    <None Remove="Resources\help_image2.jpg" />
+    <None Remove="Resources\help_image3.jpg" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\help_image1.png" />
-    <EmbeddedResource Include="Resources\help_image2.png" />
-    <EmbeddedResource Include="Resources\help_image3.png" />
+    <EmbeddedResource Include="Resources\help_image1.jpg" />
+    <EmbeddedResource Include="Resources\help_image2.jpg" />
+    <EmbeddedResource Include="Resources\help_image3.jpg" />
   </ItemGroup>
 
 </Project>
