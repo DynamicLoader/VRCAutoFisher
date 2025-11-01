@@ -9,9 +9,24 @@ namespace VRChatAutoFishing
 {
     public partial class MainForm : Form
     {
+        private enum ActionState
+        {
+            kIdle = 0,
+            kPreparing,
+            kStartToCast,
+            kCasting,
+            kWaitForFish,
+            kReeling,
+            kFinishedReel,
+            kStopped,
+            // Exceptions
+            kTimeoutReelSingle,
+            kTimeoutReel,
+        }
+
         private bool _isRunning = false;
         private bool _isProtected = false;
-        private string _currentAction = "等待";
+        private ActionState _currentAction = ActionState.kIdle;
         private DateTime _lastCycleEnd;
         private DateTime _lastCastTime;
         private System.Timers.Timer _timeoutTimer;
@@ -23,7 +38,7 @@ namespace VRChatAutoFishing
         private Thread _fishingThread;
         private bool _isReeling = false;
         private bool _isClosing = false;
-        private ManualResetEvent _stopEvent = new ManualResetEvent(false);
+        private ManualResetEvent _stopEvent = new(false);
 
         // 线程安全的参数存储
         private double _castTime = 1.7;
@@ -41,6 +56,9 @@ namespace VRChatAutoFishing
         // 特殊抛竿相关变量
         private double _actualCastTime = 0;
         private double _reelBackTime = 0;
+
+        // Notifications
+        private NotificationManager _notificationManager = new();
 
         public MainForm()
         {
@@ -86,20 +104,77 @@ namespace VRChatAutoFishing
             SendClick(false);
         }
 
+        private void DoEnableWebHookConfigurationUI(bool enabled)
+        {
+            txtWebhookURL.Enabled = enabled;
+            txtWebHookBodyTemplate.Enabled = enabled;
+        }
+
+        private bool DoSetupWebHookConfiguration()
+        {
+            _notificationManager.Clear();
+            if (chbEnableNotification.Checked)
+            {
+                string url = txtWebhookURL.Text.Trim();
+                string template = txtWebHookBodyTemplate.Text.Trim();
+                try
+                {
+                    var webhookHandler = new WebhookNotificationHandler(url, template);
+                    _notificationManager.AddHandler(webhookHandler);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"配置 WebHook 通知失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool DoSetupNotificationsAndTest()
+        {
+            chbEnableNotification.Enabled = false;
+            DoEnableWebHookConfigurationUI(false);
+            if (!DoSetupWebHookConfiguration())
+            {
+                DoReleaseWebHookConfiguration();
+                return false;
+            }
+            // Test Notifications
+            var rc = _notificationManager.NotifyAll("自动钓鱼程序已启动！");
+            if (_notificationManager.HasHandlers() && !rc.success)
+            {
+                DoReleaseWebHookConfiguration();
+                MessageBox.Show($"无法启用自动钓鱼，WebHook 配置似乎有误：{rc.message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            return true;
+        }
+
+        private void DoReleaseWebHookConfiguration()
+        {
+            _notificationManager.Clear();
+            DoEnableWebHookConfigurationUI(chbEnableNotification.Checked);
+            chbEnableNotification.Enabled = true;
+        }
+
         private void btnToggle_Click(object sender, EventArgs e)
         {
             if (_isClosing) return;
 
-            _isRunning = !_isRunning;
-            btnToggle.Text = _isRunning ? "停止" : "开始";
+            bool toBeRunning = !_isRunning;
 
-            if (_isRunning)
+            if (toBeRunning)
             {
+                if (!DoSetupNotificationsAndTest())
+                    return;
+
+                _isRunning = toBeRunning;
                 _fishCount = 0;
                 UpdateParameters();
 
                 _firstCast = true;
-                _currentAction = "开始抛竿";
+                _currentAction = ActionState.kStartToCast;
                 UpdateStatus();
 
                 _stopEvent.Reset();
@@ -109,15 +184,18 @@ namespace VRChatAutoFishing
             }
             else
             {
+                _isRunning = toBeRunning;
                 EmergencyRelease();
+                DoReleaseWebHookConfiguration();
             }
+            btnToggle.Text = _isRunning ? "停止" : "开始";
         }
 
         private void UpdateStatusDisplay(object sender, ElapsedEventArgs e)
         {
-            if (_isClosing) return;
+            if (_isClosing || !_isRunning) return;
 
-            if (_isRunning && _currentAction == "等待鱼上钩")
+            if (_currentAction == ActionState.kWaitForFish)
             {
                 double elapsedSeconds = (DateTime.Now - _lastStatusSwitchTime).TotalSeconds;
 
@@ -127,7 +205,7 @@ namespace VRChatAutoFishing
                     {
                         _showingFishCount = false;
                         _lastStatusSwitchTime = DateTime.Now;
-                        UpdateStatusText("等待鱼上钩");
+                        UpdateStatusText(ActionState.kWaitForFish);
                     }
                 }
                 else
@@ -140,6 +218,26 @@ namespace VRChatAutoFishing
                     }
                 }
             }
+        }
+
+        private void UpdateStatusText(ActionState state)
+        {
+            string text = state switch
+            {
+                ActionState.kIdle => "空闲",
+                ActionState.kPreparing => "准备中",
+                ActionState.kStartToCast => "开始抛竿",
+                ActionState.kCasting => "抛竿中",
+                ActionState.kWaitForFish => "等待鱼上钩",
+                ActionState.kReeling => "收杆中",
+                ActionState.kFinishedReel => "收杆完成",
+                ActionState.kStopped => "已停止",
+
+                ActionState.kTimeoutReelSingle => "收杆超时(单次)",
+                ActionState.kTimeoutReel => "收杆超时",
+                _ => "未知状态",
+            };
+            UpdateStatusText(text);
         }
 
         private void UpdateStatusText(string text)
@@ -199,8 +297,7 @@ namespace VRChatAutoFishing
             {
                 if (!_isClosing)
                 {
-                    MessageBox.Show($"钓鱼线程错误: {ex.Message}", "错误",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    HandleError($"钓鱼线程错误: {ex.Message}");
                 }
             }
         }
@@ -221,7 +318,7 @@ namespace VRChatAutoFishing
         {
             _isReeling = false;
             SendClick(false);
-            _currentAction = "已停止";
+            _currentAction = ActionState.kStopped;
             _showingFishCount = false;
             UpdateStatusText(_currentAction);
 
@@ -236,7 +333,7 @@ namespace VRChatAutoFishing
 
         private void UpdateStatus()
         {
-            if (_showingFishCount && _currentAction == "等待鱼上钩")
+            if (_showingFishCount && _currentAction == ActionState.kWaitForFish)
                 return;
 
             UpdateStatusText(_currentAction);
@@ -311,9 +408,9 @@ namespace VRChatAutoFishing
 
         private void HandleTimeout(object sender, ElapsedEventArgs e)
         {
-            if (_isRunning && !_isClosing && _currentAction == "等待鱼上钩")
+            if (_isRunning && !_isClosing && _currentAction == ActionState.kWaitForFish)
             {
-                _currentAction = "超时收杆";
+                _currentAction = ActionState.kTimeoutReel;
                 _showingFishCount = false;
                 UpdateStatusText(_currentAction);
                 PerformTimeoutReel();
@@ -396,7 +493,7 @@ namespace VRChatAutoFishing
         {
             if (_isClosing) return;
 
-            _currentAction = "收杆中";
+            _currentAction = ActionState.kReeling;
             _showingFishCount = false;
             UpdateStatusText(_currentAction);
             _isReeling = true;
@@ -452,16 +549,17 @@ namespace VRChatAutoFishing
             {
                 if (secondSavedDataDetected)
                 {
-                    _currentAction = "收杆完成";
+                    _currentAction = ActionState.kFinishedReel;
                     _fishCount++;
                 }
                 else if (_savedDataCount == 1)
                 {
-                    _currentAction = "收杆超时(单次)";
+                    _currentAction = ActionState.kTimeoutReelSingle; // 修改为枚举值
                 }
                 else
                 {
-                    _currentAction = "收杆超时";
+                    _currentAction = ActionState.kTimeoutReel;
+                    _notificationManager.NotifyAll("收杆超时，未检测到SAVED DATA事件！请检查游戏状态。");
                 }
                 _showingFishCount = false;
                 UpdateStatusText(_currentAction);
@@ -513,7 +611,7 @@ namespace VRChatAutoFishing
 
             if (!_firstCast)
             {
-                _currentAction = "准备中";
+                _currentAction = ActionState.kPreparing;
                 _showingFishCount = false;
                 UpdateStatusText(_currentAction);
 
@@ -527,7 +625,7 @@ namespace VRChatAutoFishing
                 _firstCast = false;
             }
 
-            _currentAction = "鱼竿蓄力中";
+            _currentAction = ActionState.kCasting;
             _showingFishCount = false;
             UpdateStatusText(_currentAction);
 
@@ -564,7 +662,7 @@ namespace VRChatAutoFishing
 
                 if (!_isClosing)
                 {
-                    _currentAction = "等待鱼上钩";
+                    _currentAction = ActionState.kWaitForFish;
                     _showingFishCount = false;
                     _lastStatusSwitchTime = DateTime.Now;
                     _lastCastTime = DateTime.Now;
@@ -594,7 +692,7 @@ namespace VRChatAutoFishing
 
                 if (!_isClosing)
                 {
-                    _currentAction = "等待鱼上钩";
+                    _currentAction = ActionState.kWaitForFish;
                     _showingFishCount = false;
                     _lastStatusSwitchTime = DateTime.Now;
                     _lastCastTime = DateTime.Now;
@@ -610,7 +708,8 @@ namespace VRChatAutoFishing
 
             System.Timers.Timer delayTimer = new System.Timers.Timer(totalWaitTime);
             delayTimer.AutoReset = false;
-            delayTimer.Elapsed += (s, e) => {
+            delayTimer.Elapsed += (s, e) =>
+            {
                 if (!_isClosing && _isRunning)
                 {
                     StartTimeoutTimer();
@@ -693,6 +792,21 @@ namespace VRChatAutoFishing
             UpdateCastTimeLabel();
         }
 
+        private void HandleError(string errorMessage)
+        {
+            if (
+                !_notificationManager.NotifyAll($"错误: {errorMessage}").success)
+            {
+                MessageBox.Show(errorMessage, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+
+        private void chbEnableNotification_CheckedChanged(object sender, EventArgs e)
+        {
+            DoEnableWebHookConfigurationUI(chbEnableNotification.Checked);
+        }
+
         // Windows Form Designer generated code
         private TrackBar trackBarCastTime;
         private Label lblCastValue;
@@ -700,6 +814,11 @@ namespace VRChatAutoFishing
         private Button btnHelp;
         private Label lblStatus;
         private Label label1;
+        private CheckBox chbEnableNotification;
+        private TextBox txtWebhookURL;
+        private Label lblWebHookURL;
+        private Label lblWebHookBodyTemplate;
+        private TextBox txtWebHookBodyTemplate;
 
         private void InitializeComponent()
         {
@@ -710,6 +829,11 @@ namespace VRChatAutoFishing
             btnHelp = new Button();
             lblStatus = new Label();
             label1 = new Label();
+            chbEnableNotification = new CheckBox();
+            txtWebhookURL = new TextBox();
+            lblWebHookURL = new Label();
+            lblWebHookBodyTemplate = new Label();
+            txtWebHookBodyTemplate = new TextBox();
             ((System.ComponentModel.ISupportInitialize)trackBarCastTime).BeginInit();
             SuspendLayout();
             // 
@@ -717,7 +841,6 @@ namespace VRChatAutoFishing
             // 
             trackBarCastTime.Location = new Point(80, 12);
             trackBarCastTime.Maximum = 17;
-            trackBarCastTime.Minimum = 0;
             trackBarCastTime.Name = "trackBarCastTime";
             trackBarCastTime.Size = new Size(130, 45);
             trackBarCastTime.TabIndex = 1;
@@ -734,7 +857,7 @@ namespace VRChatAutoFishing
             // 
             // btnToggle
             // 
-            btnToggle.Location = new Point(95, 58);
+            btnToggle.Location = new Point(95, 235);
             btnToggle.Name = "btnToggle";
             btnToggle.Size = new Size(70, 30);
             btnToggle.TabIndex = 4;
@@ -743,7 +866,7 @@ namespace VRChatAutoFishing
             // 
             // btnHelp
             // 
-            btnHelp.Location = new Point(15, 58);
+            btnHelp.Location = new Point(15, 235);
             btnHelp.Name = "btnHelp";
             btnHelp.Size = new Size(70, 30);
             btnHelp.TabIndex = 3;
@@ -752,7 +875,7 @@ namespace VRChatAutoFishing
             // 
             // lblStatus
             // 
-            lblStatus.Location = new Point(170, 65);
+            lblStatus.Location = new Point(170, 242);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(80, 20);
             lblStatus.TabIndex = 5;
@@ -766,10 +889,62 @@ namespace VRChatAutoFishing
             label1.TabIndex = 0;
             label1.Text = "蓄力时间:";
             // 
+            // chbEnableNotification
+            // 
+            chbEnableNotification.AutoSize = true;
+            chbEnableNotification.Location = new Point(15, 63);
+            chbEnableNotification.Name = "chbEnableNotification";
+            chbEnableNotification.Size = new Size(178, 21);
+            chbEnableNotification.TabIndex = 6;
+            chbEnableNotification.Text = "启用错误时 WebHook 通知";
+            chbEnableNotification.UseVisualStyleBackColor = true;
+            chbEnableNotification.CheckedChanged += chbEnableNotification_CheckedChanged;
+            // 
+            // txtWebhookURL
+            // 
+            txtWebhookURL.Enabled = false;
+            txtWebhookURL.Location = new Point(55, 93);
+            txtWebhookURL.Name = "txtWebhookURL";
+            txtWebhookURL.Size = new Size(193, 23);
+            txtWebhookURL.TabIndex = 7;
+            // 
+            // lblWebHookURL
+            // 
+            lblWebHookURL.AutoSize = true;
+            lblWebHookURL.Location = new Point(15, 96);
+            lblWebHookURL.Name = "lblWebHookURL";
+            lblWebHookURL.Size = new Size(34, 17);
+            lblWebHookURL.TabIndex = 8;
+            lblWebHookURL.Text = "URL:";
+            // 
+            // lblWebHookBodyTemplate
+            // 
+            lblWebHookBodyTemplate.AutoSize = true;
+            lblWebHookBodyTemplate.Location = new Point(12, 128);
+            lblWebHookBodyTemplate.Name = "lblWebHookBodyTemplate";
+            lblWebHookBodyTemplate.Size = new Size(72, 17);
+            lblWebHookBodyTemplate.TabIndex = 9;
+            lblWebHookBodyTemplate.Text = "\u007f请求体模板";
+            // 
+            // txtWebHookBodyTemplate
+            // 
+            txtWebHookBodyTemplate.Enabled = false;
+            txtWebHookBodyTemplate.Location = new Point(15, 152);
+            txtWebHookBodyTemplate.Multiline = true;
+            txtWebHookBodyTemplate.Name = "txtWebHookBodyTemplate";
+            txtWebHookBodyTemplate.Size = new Size(233, 77);
+            txtWebHookBodyTemplate.TabIndex = 10;
+            txtWebHookBodyTemplate.Text = "{\"msg_type\":\"text\",\"content\":{\"text\":\"{{message}}\"}}";
+            // 
             // MainForm
             // 
             BackgroundImageLayout = ImageLayout.None;
-            ClientSize = new Size(260, 100);
+            ClientSize = new Size(260, 273);
+            Controls.Add(txtWebHookBodyTemplate);
+            Controls.Add(lblWebHookBodyTemplate);
+            Controls.Add(lblWebHookURL);
+            Controls.Add(txtWebhookURL);
+            Controls.Add(chbEnableNotification);
             Controls.Add(label1);
             Controls.Add(trackBarCastTime);
             Controls.Add(lblCastValue);
