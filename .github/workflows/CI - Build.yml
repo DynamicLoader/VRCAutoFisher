@@ -39,11 +39,11 @@ jobs:
         run: dotnet restore -r ${{ matrix.rid }} "VRChatAutoFishing.csproj"
 
 
-      - name: Build
-        working-directory: VRChatAutoFishing
-        run: |
-          dotnet build "VRChatAutoFishing.csproj" --configuration Release --no-restore
-          dotnet build "VRChatAutoFishing.csproj" --configuration ReleaseWithRuntime --no-restore
+      # - name: Build
+      #   working-directory: VRChatAutoFishing
+      #   run: |
+      #     dotnet build "VRChatAutoFishing.csproj" --configuration Release --no-restore
+      #     dotnet build "VRChatAutoFishing.csproj" --configuration ReleaseWithRuntime --no-restore
 
 
       - name: Publish
@@ -77,6 +77,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.name }}
-          path: ./publish
+          path: ${{ github.workspace }}/publish
 
   # release job removed: workflow now only builds and uploads artifacts
