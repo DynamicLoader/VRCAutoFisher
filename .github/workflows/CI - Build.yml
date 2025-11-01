@@ -77,6 +77,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.name }}
-          path: ${{ github.workspace }}/publish
+          path: ${{ github.workspace }}/VRChatAutoFishing/publish
 
   # release job removed: workflow now only builds and uploads artifacts
