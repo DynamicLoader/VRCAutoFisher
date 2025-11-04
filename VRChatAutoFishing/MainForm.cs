@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Timers;
 using System.Windows.Forms;
@@ -13,12 +14,24 @@ namespace VRChatAutoFishing
         private System.Timers.Timer _delaySaveTimer;
         private AutoFisher? _autoFisher;
         private bool _isFisherRunning = false;
+        private ImageList imageListIcon;
+        private System.ComponentModel.IContainer components;
         private Managers? _managers;
 
         public MainForm()
         {
             InitializeComponent();
             InitializeFisherComponents();
+            Text = GetTitleWithVersion();
+        }
+
+        private string GetTitleWithVersion() {
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            if (version != null)
+            {
+                return $"自动钓鱼 v{version.Major}.{version.Minor}.{version.Build}";
+            }
+            return "自动钓鱼";
         }
 
         private void InitializeFisherComponents()
@@ -35,15 +48,14 @@ namespace VRChatAutoFishing
             UpdateCastTimeLabel();
         }
 
-        private void CreateFisher()
+        private void CreateFisher(string ip, int port, double castTime)
         {
             if (_autoFisher != null)
             {
                 _autoFisher.Dispose();
             }
 
-            var castTime = trackBarCastTime.Value / 10.0;
-            _autoFisher = new AutoFisher("127.0.0.1", 9000, castTime);
+            _autoFisher = new AutoFisher(ip, port, castTime);
 
             // Subscribe to events from AutoFisher
             _autoFisher.OnUpdateStatus += status => Invoke(() => UpdateStatusText(status));
@@ -60,10 +72,11 @@ namespace VRChatAutoFishing
 
         private void DelaySaveTimer_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            _settingsForm.SaveSettingsToFile(new AppSettings
+
+            SettingsForm.SaveSettingsToFile(_settingsForm.GetOverridenAppSettings(new AppSettings
             {
                 castingTime = trackBarCastTime.Value / 10.0,
-            });
+            }));
         }
 
         private void DelayToSaveSettings()
@@ -95,8 +108,14 @@ namespace VRChatAutoFishing
             {
                 btnSettings.Enabled = false;
                 _managers = _settingsForm.GetManagers();
+                var appSettings = _settingsForm.GetOverridenAppSettings(new AppSettings
+                {
+                    castingTime = trackBarCastTime.Value / 10.0,
+                });
 
-                CreateFisher();
+                CreateFisher(appSettings.OSCIPAddr ?? AppSettings.DefaultOSCIPAddr,
+                             appSettings.OSCPort ?? AppSettings.DefaultOSCPort,
+                             appSettings.castingTime ?? AppSettings.DefaultCastingTime);
                 _autoFisher?.Start();
             }
             else
@@ -105,13 +124,14 @@ namespace VRChatAutoFishing
                 _autoFisher = null;
                 btnSettings.Enabled = true;
             }
-            btnToggle.Text = _isFisherRunning ? "停止" : "开始";
+            btnToggle.Text = _isFisherRunning ? "  停止" : "  开始";
+            btnToggle.ImageIndex = _isFisherRunning ? 4 : 2;
         }
 
         private void UpdateStatusText(string text)
         {
-            Text = $"[{text}] - 自动钓鱼";
-        }
+            Text = $"[{text}] - {GetTitleWithVersion()}";
+        }       
 
         private void btnHelp_Click(object? sender, EventArgs e)
         {
@@ -145,6 +165,11 @@ namespace VRChatAutoFishing
         {
             ClearDelayToSaveSettings();
             _settingsForm.ShowDialog();
+            var appSettings = _settingsForm.GetOverridenAppSettings(new AppSettings
+            {
+                castingTime = trackBarCastTime.Value / 10.0,
+            });
+            SettingsForm.SaveSettingsToFile(appSettings);
         }
 
         // Windows Form Designer generated code
@@ -154,9 +179,11 @@ namespace VRChatAutoFishing
         private Button btnHelp;
         private Label label1;
         private Button btnSettings;
+        private Button btnAnalysis;
 
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
             trackBarCastTime = new TrackBar();
             lblCastValue = new Label();
@@ -164,6 +191,8 @@ namespace VRChatAutoFishing
             btnHelp = new Button();
             label1 = new Label();
             btnSettings = new Button();
+            btnAnalysis = new Button();
+            imageListIcon = new ImageList(components);
             ((System.ComponentModel.ISupportInitialize)trackBarCastTime).BeginInit();
             SuspendLayout();
             // 
@@ -187,20 +216,24 @@ namespace VRChatAutoFishing
             // 
             // btnToggle
             // 
-            btnToggle.Location = new Point(91, 65);
+            btnToggle.ImageIndex = 2;
+            btnToggle.ImageList = imageListIcon;
+            btnToggle.Location = new Point(159, 62);
             btnToggle.Name = "btnToggle";
-            btnToggle.Size = new Size(70, 30);
+            btnToggle.Size = new Size(89, 30);
             btnToggle.TabIndex = 4;
-            btnToggle.Text = "开始";
+            btnToggle.Text = "  开始";
+            btnToggle.TextImageRelation = TextImageRelation.ImageBeforeText;
             btnToggle.Click += btnToggle_Click;
             // 
             // btnHelp
             // 
-            btnHelp.Location = new Point(15, 65);
+            btnHelp.ImageKey = "help (Custom).png";
+            btnHelp.ImageList = imageListIcon;
+            btnHelp.Location = new Point(15, 62);
             btnHelp.Name = "btnHelp";
-            btnHelp.Size = new Size(70, 30);
+            btnHelp.Size = new Size(42, 30);
             btnHelp.TabIndex = 3;
-            btnHelp.Text = "说明";
             btnHelp.Click += btnHelp_Click;
             // 
             // label1
@@ -213,18 +246,42 @@ namespace VRChatAutoFishing
             // 
             // btnSettings
             // 
-            btnSettings.Location = new Point(167, 65);
+            btnSettings.ImageKey = "cog (Custom).png";
+            btnSettings.ImageList = imageListIcon;
+            btnSettings.Location = new Point(63, 62);
             btnSettings.Name = "btnSettings";
-            btnSettings.Size = new Size(77, 30);
+            btnSettings.Size = new Size(42, 30);
             btnSettings.TabIndex = 11;
-            btnSettings.Text = "高级设置";
             btnSettings.UseVisualStyleBackColor = true;
             btnSettings.Click += btnSettings_Click;
+            // 
+            // btnAnalysis
+            // 
+            btnAnalysis.ImageKey = "poll (Custom).png";
+            btnAnalysis.ImageList = imageListIcon;
+            btnAnalysis.Location = new Point(111, 62);
+            btnAnalysis.Name = "btnAnalysis";
+            btnAnalysis.Size = new Size(42, 30);
+            btnAnalysis.TabIndex = 12;
+            btnAnalysis.UseVisualStyleBackColor = true;
+            btnAnalysis.Visible = false;
+            // 
+            // imageListIcon
+            // 
+            imageListIcon.ColorDepth = ColorDepth.Depth32Bit;
+            imageListIcon.ImageStream = (ImageListStreamer)resources.GetObject("imageListIcon.ImageStream");
+            imageListIcon.TransparentColor = Color.Transparent;
+            imageListIcon.Images.SetKeyName(0, "cog (Custom).png");
+            imageListIcon.Images.SetKeyName(1, "help (Custom).png");
+            imageListIcon.Images.SetKeyName(2, "play (Custom).png");
+            imageListIcon.Images.SetKeyName(3, "poll (Custom).png");
+            imageListIcon.Images.SetKeyName(4, "stop-circle (Custom).png");
             // 
             // MainForm
             // 
             BackgroundImageLayout = ImageLayout.None;
             ClientSize = new Size(260, 104);
+            Controls.Add(btnAnalysis);
             Controls.Add(btnSettings);
             Controls.Add(label1);
             Controls.Add(trackBarCastTime);
@@ -236,7 +293,7 @@ namespace VRChatAutoFishing
             MaximizeBox = false;
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "自动钓鱼v1.5.3";
+            Text = "自动钓鱼";
             FormClosing += MainForm_FormClosing;
             Load += MainForm_Load;
             ((System.ComponentModel.ISupportInitialize)trackBarCastTime).EndInit();

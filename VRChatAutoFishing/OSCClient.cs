@@ -11,6 +11,7 @@ namespace VRChatAutoFishing
 
         public OSCClient(string ipAddress, int port)
         {
+            Console.WriteLine($"OSCClient({ipAddress},{port})");
             _udpClient = new UdpClient();
             _endPoint = new IPEndPoint(IPAddress.Parse(ipAddress), port);
         }

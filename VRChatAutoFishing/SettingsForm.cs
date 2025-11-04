@@ -17,18 +17,59 @@ namespace VRChatAutoFishing
         public SettingsForm()
         {
             InitializeComponent();
+            tbOSCAddr.Validating += TbOSCIPAddr_Validating;
+            tbOSCPort.Validating += TbOSCPort_Validating;
         }
 
-        public void SaveSettingsToFile(AppSettings overrides)
+        private void TbOSCPort_Validating(object? sender, CancelEventArgs e)
         {
-            var appSettings = new AppSettings
+            if (string.IsNullOrWhiteSpace(tbOSCPort.Text))
+            {
+                errorProvider.SetError(tbOSCPort, "端口为空，将使用默认端口 " + AppSettings.DefaultOSCPort.ToString());
+            }
+            else if (!int.TryParse(tbOSCPort.Text, out int port) || port < 1 || port > 65535)
+            {
+                errorProvider.SetError(tbOSCPort, "请输入有效的端口号 (1-65535)。");
+            }
+            else
+            {
+                errorProvider.SetError(tbOSCPort, "");
+            }
+        }
+
+        private void TbOSCIPAddr_Validating(object? sender, CancelEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(tbOSCAddr.Text))
+            {
+                errorProvider.SetError(tbOSCAddr, "IP地址为空，将使用默认IP " + AppSettings.DefaultOSCIPAddr);
+            }
+            else if (!System.Net.IPAddress.TryParse(tbOSCAddr.Text, out _))
+            {
+                errorProvider.SetError(tbOSCAddr, "请输入有效的IP地址。");
+                //e.Cancel = true;
+            }
+            else
+            {
+                errorProvider.SetError(tbOSCAddr, "");
+            }
+        }
+
+        private const string ConfigureFileName = "AutoFisherVRC.json";
+        public AppSettings GetOverridenAppSettings(AppSettings overrides) { 
+            return new AppSettings
             {
                 castingTime = overrides.castingTime ?? AppSettings.DefaultCastingTime,
+                OSCIPAddr = overrides.OSCIPAddr ?? (System.Net.IPAddress.TryParse(tbOSCAddr.Text, out _) ? tbOSCAddr.Text : AppSettings.DefaultOSCIPAddr),
+                OSCPort = overrides.OSCPort ?? (int.TryParse(tbOSCPort.Text, out _) ? int.Parse(tbOSCPort.Text) : AppSettings.DefaultOSCPort),
                 WebhookSettings = overrides.WebhookSettings ?? webhookNotificationSettings.SaveSettings()
             };
+        }
+
+        public static void SaveSettingsToFile(AppSettings appSettings)
+        {
             string settingsJson = JsonSerializer.Serialize(appSettings);
-            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AutoFisherVRC.json");
-            var userProfilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AutoFisherVRC.json");
+            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigureFileName);
+            var userProfilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ConfigureFileName);
 
             try
             {
@@ -52,8 +93,8 @@ namespace VRChatAutoFishing
 
         public AppSettings InitializeSavedValues()
         {
-            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AutoFisherVRC.json");
-            var userProfilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AutoFisherVRC.json");
+            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigureFileName);
+            var userProfilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ConfigureFileName);
             string? settingsJson = null;
 
             try
@@ -84,11 +125,13 @@ namespace VRChatAutoFishing
             if (appSettings == null)
                 return null;
 
+            tbOSCAddr.Text = System.Net.IPAddress.TryParse(appSettings.OSCIPAddr ?? "", out _) ? appSettings.OSCIPAddr : AppSettings.DefaultOSCIPAddr;
+            tbOSCPort.Text = (appSettings.OSCPort != null && appSettings.OSCPort > 0 && appSettings.OSCPort < 65536 ? appSettings.OSCPort : AppSettings.DefaultOSCPort).ToString();
             webhookNotificationSettings.LoadSettings(appSettings.WebhookSettings);
             return appSettings;
         }
 
-        public Settings GetSettings()
+        private Settings GetSettings()
         {
             Settings result = new();
             result.webhookNotificationHandler = webhookNotificationSettings.GetNotificationHandler();
@@ -98,12 +141,7 @@ namespace VRChatAutoFishing
         public Managers GetManagers()
         {
             Settings settings = GetSettings();
-            return SetupManagersFromSettings(settings);
-        }
-
-        static public Managers SetupManagersFromSettings(Settings settings)
-        {
-            Managers managers = new Managers();
+            Managers managers = new();
             managers.notificationManager = SetupNotifications(settings);
             return managers;
         }
@@ -129,17 +167,21 @@ namespace VRChatAutoFishing
 
     }
 
+    internal class Settings
+    {
+        public INotificationHandler? webhookNotificationHandler;
+    }
+
     public class AppSettings
     {
         public const double DefaultCastingTime = 1.7;
+        public const string DefaultOSCIPAddr = "127.0.0.1";
+        public const int DefaultOSCPort = 9000;
 
         public double? castingTime { get; set; }
+        public string? OSCIPAddr { get; set; }
+        public int? OSCPort { get; set; }
         public WebhookNotificationSettingsControl.WebhookSettings? WebhookSettings { get; set; }
-    }
-
-    public class Settings
-    {
-        public INotificationHandler? webhookNotificationHandler;
     }
 
     public class Managers
